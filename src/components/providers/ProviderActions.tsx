@@ -42,6 +42,8 @@ interface ProviderActionsProps {
   // OpenClaw: default model
   isDefaultModel?: boolean;
   onSetAsDefault?: () => void;
+  /** Applied to secondary icon actions (edit/copy/…) for hover-reveal etc. */
+  secondaryClassName?: string;
 }
 
 // 主按钮的呈现状态。title 用于 disabled 态向用户解释为何不可点击；
@@ -80,6 +82,7 @@ export function ProviderActions({
   // OpenClaw: default model
   isDefaultModel = false,
   onSetAsDefault,
+  secondaryClassName,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
   const iconButtonClass = "h-8 w-8 p-1";
@@ -280,7 +283,7 @@ export function ProviderActions({
         </Button>
       </span>
 
-      <div className="flex items-center gap-1">
+      <div className={cn("flex items-center gap-1", secondaryClassName)}>
         <Button
           size="icon"
           variant="ghost"

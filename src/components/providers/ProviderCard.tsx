@@ -30,6 +30,7 @@ import {
 import { useProviderHealth } from "@/lib/query/failover";
 import { useUsageQuery } from "@/lib/query/queries";
 import { resolveProviderIcon } from "@/utils/providerIcon";
+import { HighlightText } from "@/components/providers/HighlightText";
 
 interface DragHandleProps {
   attributes: DraggableAttributes;
@@ -44,6 +45,14 @@ interface ProviderCardProps {
   isInConfig?: boolean; // OpenCode: 是否已添加到 opencode.json
   isOmo?: boolean;
   isOmoSlim?: boolean;
+  /** Active search query — enables name/URL highlighting */
+  searchQuery?: string;
+  /** Localized reason this card matched the search */
+  matchLabel?: string;
+  /** Snippet of the matched field (notes / model / endpoint) */
+  matchSnippet?: string;
+  /** Keyboard-focus highlight in search results */
+  isKeyboardActive?: boolean;
   onSwitch: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
@@ -143,6 +152,10 @@ export function ProviderCard({
   isInConfig = true,
   isOmo = false,
   isOmoSlim = false,
+  searchQuery,
+  matchLabel,
+  matchSnippet,
+  isKeyboardActive = false,
   onSwitch,
   onEdit,
   onDelete,
@@ -304,11 +317,15 @@ export function ProviderCard({
         shouldUseGreen &&
           "border-emerald-500/60 shadow-sm shadow-emerald-500/10",
         shouldUseBlue && "border-blue-500/60 shadow-sm shadow-blue-500/10",
+        isKeyboardActive &&
+          "ring-2 ring-primary/70 border-primary/50 shadow-md",
         !(isActiveProvider || hasPersistentConfigHighlight) &&
           "hover:shadow-sm",
         dragHandleProps?.isDragging &&
           "cursor-grabbing border-primary shadow-lg scale-105 z-10",
       )}
+      data-provider-id={provider.id}
+      aria-selected={isKeyboardActive || undefined}
     >
       <div
         className={cn(
@@ -323,19 +340,21 @@ export function ProviderCard({
       />
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <button
-            type="button"
-            className={cn(
-              "-ml-1.5 flex-shrink-0 cursor-grab active:cursor-grabbing p-1.5",
-              "text-muted-foreground/50 hover:text-muted-foreground transition-colors",
-              dragHandleProps?.isDragging && "cursor-grabbing",
-            )}
-            aria-label={t("provider.dragHandle")}
-            {...(dragHandleProps?.attributes ?? {})}
-            {...(dragHandleProps?.listeners ?? {})}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          {dragHandleProps && (
+            <button
+              type="button"
+              className={cn(
+                "-ml-1.5 flex-shrink-0 cursor-grab active:cursor-grabbing p-1.5",
+                "text-muted-foreground/50 hover:text-muted-foreground transition-colors",
+                dragHandleProps.isDragging && "cursor-grabbing",
+              )}
+              aria-label={t("provider.dragHandle")}
+              {...dragHandleProps.attributes}
+              {...dragHandleProps.listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
 
           <div className="h-8 w-8 flex-shrink-0 rounded-lg bg-muted flex items-center justify-center border border-border group-hover:scale-105 transition-transform duration-300">
             <ProviderIcon
@@ -353,9 +372,18 @@ export function ProviderCard({
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2 min-h-7">
               <h3 className="text-base font-semibold leading-none">
-                {provider.name}
+                <HighlightText text={provider.name} query={searchQuery} />
               </h3>
-
+              {isActiveProvider && (
+                <span className="inline-flex items-center rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                  {t("provider.currentBadge", { defaultValue: "当前" })}
+                </span>
+              )}
+              {searchQuery?.trim() && matchLabel && (
+                <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {matchLabel}
+                </span>
+              )}
               {isOmo && (
                 <span className="inline-flex items-center rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                   OMO
@@ -475,8 +503,15 @@ export function ProviderCard({
                 title={displayUrl}
                 disabled={!isClickableUrl}
               >
-                <span className="min-w-0 truncate">{displayUrl}</span>
+                <span className="min-w-0 truncate">
+                  <HighlightText text={displayUrl} query={searchQuery} />
+                </span>
               </button>
+            )}
+            {searchQuery?.trim() && matchSnippet && (
+              <p className="truncate text-xs text-muted-foreground">
+                <HighlightText text={matchSnippet} query={searchQuery} />
+              </p>
             )}
           </div>
         </div>
@@ -556,7 +591,7 @@ export function ProviderCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 group-hover:pointer-events-auto group-focus-within:pointer-events-auto transition-opacity duration-200">
+          <div className="flex flex-shrink-0 items-center gap-1.5">
             <ProviderActions
               appId={appId}
               isCurrent={isCurrent}
@@ -603,6 +638,13 @@ export function ProviderCard({
               // OpenClaw: default model
               isDefaultModel={isDefaultModel}
               onSetAsDefault={onSetAsDefault}
+              secondaryClassName={cn(
+                "opacity-0 pointer-events-none transition-opacity duration-200",
+                "group-hover:opacity-100 group-hover:pointer-events-auto",
+                "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+                "max-sm:opacity-100 max-sm:pointer-events-auto",
+                "[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto",
+              )}
             />
           </div>
         </div>

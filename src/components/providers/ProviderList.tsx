@@ -12,8 +12,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, Search, X } from "lucide-react";
+import { AlertTriangle, Search, X, Keyboard } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,6 +21,8 @@ import type { AppId } from "@/lib/api";
 import { providersApi } from "@/lib/api/providers";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { useDragSort } from "@/hooks/useDragSort";
+import { useProviderSearch } from "@/hooks/useProviderSearch";
+import type { ProviderSearchMatchField } from "@/utils/providerSearch";
 import {
   useOpenClawLiveProviderIds,
   useOpenClawDefaultModel,
@@ -47,6 +48,7 @@ import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { isTextEditableTarget } from "@/utils/domUtils";
+import { cn } from "@/lib/utils";
 
 interface ProviderListProps {
   providers: Record<string, Provider>;
@@ -190,8 +192,88 @@ export function ProviderList({
   );
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTermRef = useRef(searchTerm);
+  const prevAppIdRef = useRef(appId);
+  const searchByAppRef = useRef<Partial<Record<AppId, string>>>({});
+  searchTermRef.current = searchTerm;
+
+  const {
+    isSearching,
+    hits: rawHits,
+    resultCount,
+    totalCount,
+  } = useProviderSearch(sortedProviders, searchTerm);
+
+  // Resolve the "current" provider id for this app (switch-mode vs additive)
+  const highlightedProviderId = useMemo(() => {
+    if (appId === "hermes") return hermesCurrentProviderId || "";
+    if (appId === "opencode" || appId === "openclaw") return currentProviderId;
+    return currentProviderId;
+  }, [appId, hermesCurrentProviderId, currentProviderId]);
+
+  const currentProvider = useMemo(() => {
+    if (!highlightedProviderId) return undefined;
+    return sortedProviders.find((p) => p.id === highlightedProviderId);
+  }, [highlightedProviderId, sortedProviders]);
+
+  // Pin current provider to top while searching (when it matches)
+  const hits = useMemo(() => {
+    if (!isSearching || !highlightedProviderId) return rawHits;
+    const idx = rawHits.findIndex(
+      (hit) => hit.provider.id === highlightedProviderId,
+    );
+    if (idx <= 0) return rawHits;
+    const next = [...rawHits];
+    const [currentHit] = next.splice(idx, 1);
+    return [currentHit, ...next];
+  }, [rawHits, isSearching, highlightedProviderId]);
+
+  const filteredProviders = useMemo(
+    () => hits.map((hit) => hit.provider),
+    [hits],
+  );
+
+  const currentHiddenBySearch = Boolean(
+    isSearching &&
+      currentProvider &&
+      !hits.some((hit) => hit.provider.id === currentProvider.id),
+  );
+
+  const matchFieldLabel = useCallback(
+    (field: ProviderSearchMatchField) => {
+      if (field === "name" || field === "other") return undefined;
+      return t(`provider.searchMatch.${field}`, {
+        defaultValue: field,
+      });
+    },
+    [t],
+  );
+
+  const scrollActiveIntoView = useCallback((index: number) => {
+    const id = filteredProviders[index]?.id;
+    if (!id) return;
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-provider-id="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [filteredProviders]);
+
+  const revealCurrentProvider = useCallback(() => {
+    setSearchTerm("");
+    setActiveResultIndex(0);
+    if (!highlightedProviderId) return;
+    requestAnimationFrame(() => {
+      document
+        .querySelector(
+          `[data-provider-id="${CSS.escape(highlightedProviderId)}"]`,
+        )
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [highlightedProviderId]);
+
   const { data: claudeDesktopStatus } = useQuery({
     queryKey: ["claudeDesktopStatus"],
     queryFn: () => providersApi.getClaudeDesktopStatus(),
@@ -250,49 +332,120 @@ export function ProviderList({
     },
   });
 
+  const focusSearch = useCallback(() => {
+    const frame = requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // Keep keyboard selection in range when results shrink
+  useEffect(() => {
+    if (filteredProviders.length === 0) {
+      setActiveResultIndex(0);
+      return;
+    }
+    setActiveResultIndex((prev) =>
+      Math.min(prev, filteredProviders.length - 1),
+    );
+  }, [filteredProviders.length]);
+
+  // Remember search query per app so switching apps doesn't feel lossy
+  useEffect(() => {
+    const prev = prevAppIdRef.current;
+    if (prev === appId) return;
+    searchByAppRef.current[prev] = searchTermRef.current;
+    prevAppIdRef.current = appId;
+    setSearchTerm(searchByAppRef.current[appId] ?? "");
+    setActiveResultIndex(0);
+  }, [appId]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
 
       const key = event.key.toLowerCase();
-      if ((event.metaKey || event.ctrlKey) && key === "f") {
-        // 正在输入框/可编辑区域中时不抢占 Ctrl+F（例如添加供应商表单里
-        // ProviderPresetSelector 的搜索框），避免与其同名快捷键冲突。
-        if (isTextEditableTarget(document.activeElement)) return;
+      const isMod = event.metaKey || event.ctrlKey;
+      const searchFocused = document.activeElement === searchInputRef.current;
+
+      // Ctrl/Cmd+F or Ctrl/Cmd+K → focus provider search
+      if (isMod && (key === "f" || key === "k")) {
+        if (isTextEditableTarget(document.activeElement) && !searchFocused) {
+          if (key === "f") return;
+          // Ctrl+K: only steal focus when not in another editable field
+          return;
+        }
         event.preventDefault();
-        setIsSearchOpen(true);
+        focusSearch();
         return;
       }
 
+      // "/" opens search when not already typing elsewhere
+      if (
+        key === "/" &&
+        !isMod &&
+        !event.altKey &&
+        !isTextEditableTarget(document.activeElement)
+      ) {
+        event.preventDefault();
+        focusSearch();
+        return;
+      }
+
+      if (!searchFocused) return;
+
       if (key === "escape") {
-        setIsSearchOpen(false);
+        if (searchTerm) {
+          setSearchTerm("");
+        } else {
+          searchInputRef.current?.blur();
+        }
+        return;
+      }
+
+      if (!isSearching || filteredProviders.length === 0) return;
+
+      if (key === "arrowdown") {
+        event.preventDefault();
+        setActiveResultIndex((prev) => {
+          const next = (prev + 1) % filteredProviders.length;
+          scrollActiveIntoView(next);
+          return next;
+        });
+        return;
+      }
+
+      if (key === "arrowup") {
+        event.preventDefault();
+        setActiveResultIndex((prev) => {
+          const next =
+            (prev - 1 + filteredProviders.length) % filteredProviders.length;
+          scrollActiveIntoView(next);
+          return next;
+        });
+        return;
+      }
+
+      if (key === "enter") {
+        event.preventDefault();
+        const target =
+          filteredProviders[activeResultIndex] ?? filteredProviders[0];
+        if (target) onSwitch(target);
       }
     };
 
     globalThis.addEventListener("keydown", handleKeyDown);
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    if (isSearchOpen) {
-      const frame = requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [isSearchOpen]);
-
-  const filteredProviders = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-    if (!keyword) return sortedProviders;
-    return sortedProviders.filter((provider) => {
-      const fields = [provider.name, provider.notes, provider.websiteUrl];
-      return fields.some((field) =>
-        field?.toString().toLowerCase().includes(keyword),
-      );
-    });
-  }, [searchTerm, sortedProviders]);
+  }, [
+    focusSearch,
+    searchTerm,
+    isSearching,
+    filteredProviders,
+    activeResultIndex,
+    onSwitch,
+    scrollActiveIntoView,
+  ]);
 
   const claudeDesktopStatusMessages = useMemo(() => {
     if (appId !== "claude-desktop" || !claudeDesktopStatus) return [];
@@ -378,14 +531,18 @@ export function ProviderList({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
+      onDragEnd={isSearching ? () => {} : handleDragEnd}
     >
       <SortableContext
         items={filteredProviders.map((provider) => provider.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3">
-          {filteredProviders.map((provider) => {
+        <div
+          className="space-y-3"
+          role="listbox"
+          aria-label={t("provider.searchAriaLabel")}
+        >
+          {hits.map(({ provider, matchField, matchSnippet }, index) => {
             const isOmo = provider.category === "omo";
             const isOmoSlim = provider.category === "omo-slim";
             const isOmoCurrent = isOmo && provider.id === (currentOmoId || "");
@@ -394,8 +551,13 @@ export function ProviderList({
             const isHermesCurrent =
               appId === "hermes" && hermesCurrentProviderId === provider.id;
             return (
-              <SortableProviderCard
+              <div
                 key={provider.id}
+                id={`provider-option-${provider.id}`}
+                role="option"
+                aria-selected={isSearching && index === activeResultIndex}
+              >
+              <SortableProviderCard
                 provider={provider}
                 isCurrent={
                   isOmo
@@ -410,6 +572,13 @@ export function ProviderList({
                 isInConfig={isProviderInConfig(provider.id)}
                 isOmo={isOmo}
                 isOmoSlim={isOmoSlim}
+                searchQuery={isSearching ? searchTerm : undefined}
+                matchLabel={
+                  isSearching ? matchFieldLabel(matchField) : undefined
+                }
+                matchSnippet={isSearching ? matchSnippet : undefined}
+                isKeyboardActive={isSearching && index === activeResultIndex}
+                dragDisabled={isSearching}
                 onSwitch={onSwitch}
                 onEdit={onEdit}
                 onDelete={onDelete}
@@ -441,6 +610,7 @@ export function ProviderList({
                   onSetAsDefault ? () => onSetAsDefault(provider) : undefined
                 }
               />
+              </div>
             );
           })}
         </div>
@@ -465,78 +635,140 @@ export function ProviderList({
           </ul>
         </div>
       )}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div
-            key="provider-search"
-            initial={{ opacity: 0, y: -8, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="fixed left-1/2 top-[6.5rem] z-40 w-[min(90vw,26rem)] -translate-x-1/2 sm:right-6 sm:left-auto sm:translate-x-0"
-          >
-            <div className="p-4 space-y-3 border shadow-md rounded-2xl border-white/10 bg-background/95 shadow-black/20 backdrop-blur-md">
-              <div className="relative flex items-center gap-2">
-                <Search className="absolute w-4 h-4 -translate-y-1/2 pointer-events-none left-3 top-1/2 text-muted-foreground" />
-                <Input
-                  ref={searchInputRef}
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder={t("provider.searchPlaceholder", {
-                    defaultValue: "Search name, notes, or URL...",
-                  })}
-                  aria-label={t("provider.searchAriaLabel", {
-                    defaultValue: "Search providers",
-                  })}
-                  className="pr-16 pl-9"
-                />
-                {searchTerm && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute text-xs -translate-y-1/2 right-11 top-1/2"
-                    onClick={() => setSearchTerm("")}
-                  >
-                    {t("common.clear", { defaultValue: "Clear" })}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto"
-                  onClick={() => setIsSearchOpen(false)}
-                  aria-label={t("provider.searchCloseAriaLabel", {
-                    defaultValue: "Close provider search",
-                  })}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>
-                  {t("provider.searchScopeHint", {
-                    defaultValue: "Matches provider name, notes, and URL.",
-                  })}
-                </span>
-                <span>
-                  {t("provider.searchCloseHint", {
-                    defaultValue: "Press Esc to close",
-                  })}
-                </span>
-              </div>
-            </div>
-          </motion.div>
+
+      <div className="sticky top-0 z-20 -mx-1 space-y-2 border-b border-border/50 bg-background/95 px-1 pb-2.5 pt-1 backdrop-blur-md">
+        <div className="relative flex items-center gap-2">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder={t("provider.searchPlaceholder", {
+              defaultValue:
+                "Search name, notes, URL, endpoint, or model…",
+            })}
+            role="combobox"
+            aria-expanded={isSearching}
+            aria-autocomplete="list"
+            aria-controls="provider-search-results"
+            aria-activedescendant={
+              isSearching && filteredProviders[activeResultIndex]
+                ? `provider-option-${filteredProviders[activeResultIndex].id}`
+                : undefined
+            }
+            aria-label={t("provider.searchAriaLabel", {
+              defaultValue: "Search providers",
+            })}
+            className={cn(
+              "h-10 pl-9 pr-16 shadow-sm transition-[box-shadow,border-color] focus-visible:ring-2",
+              isSearching && "border-primary/40",
+            )}
+          />
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            {searchTerm ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  setSearchTerm("");
+                  searchInputRef.current?.focus();
+                }}
+                aria-label={t("provider.searchCloseAriaLabel", {
+                  defaultValue: "Clear provider search",
+                })}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <kbd className="hidden items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
+                <Keyboard className="mr-0.5 h-3 w-3" />
+                {t("provider.searchShortcut", { defaultValue: "⌘K /" })}
+              </kbd>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-0.5 text-[11px] text-muted-foreground">
+          <span>
+            {isSearching
+              ? t("provider.searchResultCount", {
+                  count: resultCount,
+                  total: totalCount,
+                  defaultValue: "{{count}} of {{total}} providers",
+                })
+              : t("provider.searchScopeHint", {
+                  defaultValue:
+                    "Matches name, notes, website, endpoint, model ID, and category.",
+                })}
+          </span>
+          {isSearching && resultCount > 0 && (
+            <span>
+              {t("provider.searchNavHint", {
+                defaultValue: "↑↓ navigate · Enter switch · Esc clear",
+              })}
+            </span>
+          )}
+        </div>
+        {currentHiddenBySearch && currentProvider && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs text-blue-900 dark:text-blue-200">
+            <span className="min-w-0 truncate">
+              {t("provider.searchCurrentHidden", {
+                name: currentProvider.name,
+                defaultValue: "Current provider “{{name}}” is hidden by search",
+              })}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs text-blue-800 hover:bg-blue-500/15 dark:text-blue-100"
+              onClick={revealCurrentProvider}
+            >
+              {t("provider.revealCurrent", {
+                defaultValue: "Show current",
+              })}
+            </Button>
+          </div>
         )}
-      </AnimatePresence>
+        {isSearching &&
+          !currentHiddenBySearch &&
+          hits[0]?.provider.id === highlightedProviderId &&
+          hits.length > 1 && (
+            <p className="px-0.5 text-[11px] text-muted-foreground">
+              {t("provider.searchPinnedCurrent", {
+                defaultValue: "Current provider pinned to top",
+              })}
+            </p>
+          )}
+      </div>
 
       {filteredProviders.length === 0 ? (
-        <div className="px-6 py-8 text-sm text-center border border-dashed rounded-lg border-border text-muted-foreground">
-          {t("provider.noSearchResults", {
-            defaultValue: "No providers match your search.",
-          })}
+        <div className="space-y-3 rounded-lg border border-dashed border-border px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t("provider.noSearchResults", {
+              defaultValue: "No providers match your search.",
+            })}
+          </p>
+          {searchTerm.trim() && (
+            <p className="text-xs text-muted-foreground/80">
+              {t("provider.noSearchResultsFor", {
+                query: searchTerm.trim(),
+                defaultValue: "No results for “{{query}}”",
+              })}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearchTerm("");
+              searchInputRef.current?.focus();
+            }}
+          >
+            {t("provider.clearSearch", { defaultValue: "Clear search" })}
+          </Button>
         </div>
       ) : (
-        renderProviderList()
+        <div id="provider-search-results">{renderProviderList()}</div>
       )}
     </div>
   );
@@ -549,6 +781,11 @@ interface SortableProviderCardProps {
   isInConfig: boolean;
   isOmo: boolean;
   isOmoSlim: boolean;
+  searchQuery?: string;
+  matchLabel?: string;
+  matchSnippet?: string;
+  isKeyboardActive?: boolean;
+  dragDisabled?: boolean;
   onSwitch: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
@@ -580,6 +817,11 @@ function SortableProviderCard({
   isInConfig,
   isOmo,
   isOmoSlim,
+  searchQuery,
+  matchLabel,
+  matchSnippet,
+  isKeyboardActive = false,
+  dragDisabled = false,
   onSwitch,
   onEdit,
   onDelete,
@@ -609,7 +851,7 @@ function SortableProviderCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: provider.id });
+  } = useSortable({ id: provider.id, disabled: dragDisabled });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -625,6 +867,10 @@ function SortableProviderCard({
         isInConfig={isInConfig}
         isOmo={isOmo}
         isOmoSlim={isOmoSlim}
+        searchQuery={searchQuery}
+        matchLabel={matchLabel}
+        matchSnippet={matchSnippet}
+        isKeyboardActive={isKeyboardActive}
         onSwitch={onSwitch}
         onEdit={onEdit}
         onDelete={onDelete}
@@ -641,11 +887,15 @@ function SortableProviderCard({
         isTesting={isTesting}
         isProxyRunning={isProxyRunning}
         isProxyTakeover={isProxyTakeover}
-        dragHandleProps={{
-          attributes,
-          listeners,
-          isDragging,
-        }}
+        dragHandleProps={
+          dragDisabled
+            ? undefined
+            : {
+                attributes,
+                listeners,
+                isDragging,
+              }
+        }
         isAutoFailoverEnabled={isAutoFailoverEnabled}
         failoverPriority={failoverPriority}
         isInFailoverQueue={isInFailoverQueue}

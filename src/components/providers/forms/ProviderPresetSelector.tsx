@@ -62,7 +62,24 @@ export function getPresetSearchText(
   entry: PresetEntry,
   t: PresetTranslator,
 ): string {
-  return [getPresetDisplayName(entry.preset, t), entry.preset.name]
+  const preset = entry.preset as AnyPreset & {
+    websiteUrl?: string;
+    category?: string;
+    providerType?: string;
+    apiFormat?: string;
+    notes?: string;
+  };
+  return [
+    getPresetDisplayName(preset, t),
+    preset.name,
+    entry.id,
+    preset.websiteUrl,
+    preset.category,
+    preset.providerType,
+    preset.apiFormat,
+    preset.notes,
+  ]
+    .filter(Boolean)
     .join(" ")
     .toLowerCase();
 }
@@ -72,14 +89,44 @@ export function filterPresetEntries(
   query: string,
   t: PresetTranslator,
 ): PresetEntry[] {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase().normalize("NFKC");
   if (!normalizedQuery) {
     return entries;
   }
 
-  return entries.filter((entry) =>
-    getPresetSearchText(entry, t).includes(normalizedQuery),
-  );
+  const tokens = normalizedQuery.split(/[\s,;/|]+/).filter(Boolean);
+  const required = tokens.length > 0 ? tokens : [normalizedQuery];
+
+  const scored = entries
+    .map((entry) => {
+      const displayName = getPresetDisplayName(entry.preset, t).toLowerCase();
+      const haystack = getPresetSearchText(entry, t);
+      const compactName = displayName.replace(/[\s\-_.]+/g, "");
+
+      let score = 0;
+      for (const token of required) {
+        if (!haystack.includes(token) && !compactName.includes(token.replace(/[\s\-_.]+/g, ""))) {
+          return null;
+        }
+        if (displayName === token) score += 1000;
+        else if (displayName.startsWith(token)) score += 800;
+        else if (displayName.includes(token)) score += 600;
+        else if (compactName.includes(token.replace(/[\s\-_.]+/g, "")))
+          score += 550;
+        else score += 200;
+      }
+      // Phrase bonus
+      if (tokens.length > 1 && displayName.includes(normalizedQuery)) {
+        score += 300;
+      }
+      return { entry, score };
+    })
+    .filter((item): item is { entry: PresetEntry; score: number } =>
+      Boolean(item),
+    );
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((item) => item.entry);
 }
 
 export function sortPresetEntries(
@@ -135,8 +182,12 @@ export function getVisiblePresetEntries(
   options: PresetVisibilityOptions,
 ): PresetEntry[] {
   const { query, sortMode, t } = options;
-
-  return sortPresetEntries(filterPresetEntries(entries, query, t), sortMode, t);
+  const filtered = filterPresetEntries(entries, query, t);
+  // Keep relevance ranking while searching; only apply sort mode on full list.
+  if (query.trim()) {
+    return filtered;
+  }
+  return sortPresetEntries(filtered, sortMode, t);
 }
 
 interface ProviderPresetSelectorProps {

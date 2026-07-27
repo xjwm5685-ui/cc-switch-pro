@@ -287,9 +287,8 @@ describe("ProviderList Component", () => {
       />,
     );
 
-    fireEvent.keyDown(window, { key: "f", metaKey: true });
     const searchInput = screen.getByPlaceholderText(
-      "Search name, notes, or URL...",
+      "Search name, notes, URL, endpoint, or model…",
     );
     // Initially both providers are rendered
     expect(screen.getByTestId("provider-card-alpha")).toBeInTheDocument();

@@ -965,8 +965,8 @@ function App() {
           return <AgentsDefaultsPanel />;
         default:
           return (
-            <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="flex-1 overflow-y-auto overflow-x-hidden pb-12 px-1">
+            <div className="px-6 flex flex-col flex-1 min-h-0">
+              <div className="pb-12 px-1">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeApp}
@@ -1396,6 +1396,17 @@ function App() {
                 <h1 className="truncate text-base font-semibold tracking-tight">
                   {viewTitle}
                 </h1>
+                {currentView === "providers" &&
+                  currentProviderId &&
+                  providers[currentProviderId]?.name &&
+                  activeApp !== "opencode" && (
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {t("provider.headerCurrent", {
+                        name: providers[currentProviderId].name,
+                        defaultValue: "当前：{{name}}",
+                      })}
+                    </p>
+                  )}
               </div>
 
               <div
