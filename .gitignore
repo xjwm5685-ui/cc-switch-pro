@@ -1,6 +1,12 @@
 node_modules/
 dist/
 release/
+
+# Local Tauri updater signing keys — never commit
+tauri_signing.key
+tauri_signing.key.pub
+*.key
+!**/capabilities/*.json
 .DS_Store
 *.log
 .env
