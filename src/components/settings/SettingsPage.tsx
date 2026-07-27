@@ -225,7 +225,7 @@ export function SettingsPage({
           onValueChange={setActiveTab}
           className="flex flex-col h-full"
         >
-          <TabsList className="grid w-full grid-cols-6 mb-6 glass rounded-lg">
+          <TabsList className="mb-6 grid w-full grid-cols-6 rounded-2xl border-white/50 bg-white/30 shadow-glass backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.04]">
             <TabsTrigger value="general">
               {t("settings.tabGeneral")}
             </TabsTrigger>

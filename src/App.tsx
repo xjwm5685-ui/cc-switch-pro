@@ -1213,7 +1213,7 @@ function App() {
 
   return (
     <div
-      className="flex h-screen flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30"
+      className="app-shell flex h-screen flex-col overflow-hidden bg-transparent text-foreground selection:bg-sky-400/30"
       style={{ overflowX: "hidden", paddingTop: dragBarHeight }}
     >
       {(dragBarHeight > 0 || useAppWindowControls) && (
@@ -1302,10 +1302,10 @@ function App() {
                 target="_blank"
                 rel="noreferrer"
                 className={cn(
-                  "text-lg font-semibold tracking-tight transition-colors",
+                  "font-display text-lg font-bold tracking-tight transition-colors",
                   isProxyRunning && isCurrentAppTakeoverActive
                     ? "text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                    : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300",
+                    : "bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-500 bg-clip-text text-transparent hover:from-sky-600 hover:via-cyan-600 hover:to-teal-600",
                 )}
               >
                 CC Switch
@@ -1332,7 +1332,7 @@ function App() {
                     settingsDefaultTab === "usage" && (
                       <motion.div
                         layoutId="sidebar-nav-active"
-                        className="absolute inset-0 rounded-lg bg-background shadow-sm ring-1 ring-border/60"
+                        className="absolute inset-0 rounded-xl border border-white/60 bg-white/70 shadow-glass dark:border-white/15 dark:bg-white/10"
                         transition={indicatorSpring}
                       />
                     )}
@@ -1344,11 +1344,11 @@ function App() {
                     }}
                     title={t("usage.title", { defaultValue: "使用统计" })}
                     className={cn(
-                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
+                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-xl px-2.5 text-sm font-medium",
                       currentView === "settings" &&
                         settingsDefaultTab === "usage"
                         ? "bg-transparent text-foreground"
-                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                        : "text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-white/8",
                     )}
                   >
                     <BarChart2 className="h-4 w-4" />
@@ -1364,7 +1364,7 @@ function App() {
                     settingsDefaultTab !== "usage" && (
                       <motion.div
                         layoutId="sidebar-nav-active"
-                        className="absolute inset-0 rounded-lg bg-background shadow-sm ring-1 ring-border/60"
+                        className="absolute inset-0 rounded-xl border border-white/60 bg-white/70 shadow-glass dark:border-white/15 dark:bg-white/10"
                         transition={indicatorSpring}
                       />
                     )}
@@ -1376,11 +1376,11 @@ function App() {
                     }}
                     title={t("common.settings")}
                     className={cn(
-                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
+                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-xl px-2.5 text-sm font-medium",
                       currentView === "settings" &&
                         settingsDefaultTab !== "usage"
                         ? "bg-transparent text-foreground"
-                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                        : "text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-white/8",
                     )}
                   >
                     <Settings className="h-4 w-4" />
@@ -1400,7 +1400,7 @@ function App() {
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header
-            className="z-30 shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-md"
+            className="z-30 shrink-0 border-b border-white/40 bg-white/35 backdrop-blur-2xl dark:border-white/10 dark:bg-white/5"
             {...DRAG_REGION_ATTR}
             style={
               {
@@ -1427,7 +1427,7 @@ function App() {
                     exit="exit"
                     transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <h1 className="truncate text-base font-semibold tracking-tight">
+                    <h1 className="truncate font-display text-base font-semibold tracking-tight">
                       {viewTitle}
                     </h1>
                     {currentView === "providers" &&

@@ -334,20 +334,21 @@ export function ProviderCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border border-border p-4 transition-all duration-300",
-        "bg-card text-card-foreground group",
+        "relative overflow-hidden rounded-2xl border border-white/50 p-4 transition-all duration-300",
+        "glass-card text-card-foreground group",
         isAutoFailoverEnabled || isProxyTakeover
-          ? "hover:border-emerald-500/50"
-          : "hover:border-border-active",
+          ? "hover:border-emerald-400/55"
+          : "hover:border-sky-400/50",
         shouldUseGreen &&
-          "border-emerald-500/60 shadow-sm shadow-emerald-500/10",
-        shouldUseBlue && "border-blue-500/60 shadow-sm shadow-blue-500/10",
+          "glass-card-active !border-emerald-400/55 shadow-md shadow-emerald-500/15",
+        shouldUseBlue &&
+          "glass-card-active !border-sky-400/55 shadow-md shadow-sky-500/15",
         isKeyboardActive &&
-          "ring-2 ring-primary/70 border-primary/50 shadow-md",
+          "ring-2 ring-sky-400/60 border-sky-400/50 shadow-glass-lg",
         !(isActiveProvider || hasPersistentConfigHighlight) &&
-          "hover:shadow-sm",
+          "hover:shadow-glass",
         dragHandleProps?.isDragging &&
-          "cursor-grabbing border-primary shadow-lg scale-105 z-10",
+          "cursor-grabbing border-sky-400 shadow-glass-lg scale-[1.02] z-10",
       )}
       data-provider-id={provider.id}
       aria-selected={isKeyboardActive || undefined}
@@ -385,7 +386,7 @@ export function ProviderCard({
             </button>
           )}
 
-          <div className="h-8 w-8 flex-shrink-0 rounded-lg bg-muted flex items-center justify-center border border-border group-hover:scale-105 transition-transform duration-300">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-white/55 bg-white/50 shadow-glass backdrop-blur-md transition-transform duration-300 group-hover:scale-105 dark:border-white/15 dark:bg-white/10">
             <ProviderIcon
               icon={resolveProviderIcon(
                 appId,

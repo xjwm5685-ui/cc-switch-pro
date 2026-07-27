@@ -93,8 +93,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           animate="animate"
           exit="exit"
           transition={contentEase}
-          className="fixed inset-0 z-[60] flex flex-col"
-          style={{ backgroundColor: "hsl(var(--background))" }}
+          className="fixed inset-0 z-[60] flex flex-col glass-panel"
         >
           {/* Drag region - match App.tsx. Linux 上 DRAG_BAR_HEIGHT=0，
               直接跳过整个元素；macOS 保留 28px 拖拽占位。 */}
@@ -112,12 +111,11 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
 
           {/* Header - match App.tsx */}
           <div
-            className="flex-shrink-0 flex items-center"
+            className="flex h-16 flex-shrink-0 items-center border-b border-white/40 bg-white/25 backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
             {...DRAG_REGION_ATTR}
             style={
               {
                 ...DRAG_REGION_STYLE,
-                backgroundColor: "hsl(var(--background))",
                 height: HEADER_HEIGHT,
               } as React.CSSProperties
             }
@@ -152,11 +150,8 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
 
           {/* Footer */}
           {footer && (
-            <div
-              className="flex-shrink-0 py-4 border-t border-border-default"
-              style={{ backgroundColor: "hsl(var(--background))" }}
-            >
-              <div className="px-6 flex items-center justify-end gap-3">
+            <div className="flex-shrink-0 border-t border-white/40 bg-white/25 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+              <div className="flex items-center justify-end gap-3 px-6">
                 {footer}
               </div>
             </div>

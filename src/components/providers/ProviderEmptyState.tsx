@@ -22,7 +22,7 @@ export function ProviderEmptyState({
 
   return (
     <motion.div
-      className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-10 text-center"
+      className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-sky-300/40 bg-white/30 p-10 text-center shadow-glass backdrop-blur-xl dark:border-sky-400/20 dark:bg-white/[0.04]"
       variants={emptyState}
       initial="initial"
       animate="animate"
@@ -33,11 +33,13 @@ export function ProviderEmptyState({
         initial="initial"
         animate="animate"
         transition={{ ...contentEase, delay: 0.04 }}
-        className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted"
+        className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/60 bg-white/55 shadow-glass dark:border-white/15 dark:bg-white/10"
       >
         <Users className="h-7 w-7 text-muted-foreground" />
       </motion.div>
-      <h3 className="text-lg font-semibold">{t("provider.noProviders")}</h3>
+      <h3 className="font-display text-lg font-semibold tracking-tight">
+        {t("provider.noProviders")}
+      </h3>
       <p className="mt-2 max-w-lg text-sm text-muted-foreground">
         {t("provider.noProvidersDescription")}
       </p>

@@ -77,8 +77,8 @@ export function AppSwitcher({
     <div
       className={cn(
         isVertical
-          ? "flex w-full flex-col gap-0.5 rounded-xl bg-muted/70 p-1"
-          : "inline-flex gap-1 rounded-xl bg-muted p-1",
+          ? "flex w-full flex-col gap-0.5 rounded-2xl border border-white/50 bg-white/35 p-1 shadow-glass backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.05]"
+          : "inline-flex gap-1 rounded-2xl border border-white/50 bg-white/35 p-1 shadow-glass backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.05]",
       )}
     >
       {appsToShow.map((app) => {
@@ -91,17 +91,17 @@ export function AppSwitcher({
             type="button"
             onClick={() => handleSwitch(app)}
             className={cn(
-              "group relative inline-flex items-center rounded-md text-sm font-medium transition-colors duration-200",
+              "group relative inline-flex items-center rounded-xl text-sm font-medium transition-colors duration-200",
               isVertical ? "h-9 w-full gap-2.5 px-2.5" : "h-8 px-3",
               isActive
                 ? "text-foreground"
-                : "text-muted-foreground hover:bg-background/50 hover:text-foreground",
+                : "text-muted-foreground hover:bg-white/35 hover:text-foreground dark:hover:bg-white/8",
             )}
           >
             {isActive && (
               <motion.span
                 layoutId="app-switcher-active"
-                className="absolute inset-0 rounded-md bg-background shadow-sm"
+                className="absolute inset-0 rounded-xl border border-white/70 bg-white/80 shadow-glass dark:border-white/15 dark:bg-white/12"
                 transition={indicatorSpring}
               />
             )}
