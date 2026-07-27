@@ -16,6 +16,7 @@ interface AppSwitcherProps {
   onSwitch: (app: AppId) => void;
   visibleApps?: VisibleApps;
   compact?: boolean;
+  orientation?: "horizontal" | "vertical";
 }
 
 const ALL_APPS: AppId[] = [
@@ -35,13 +36,15 @@ export function AppSwitcher({
   onSwitch,
   visibleApps,
   compact,
+  orientation = "horizontal",
 }: AppSwitcherProps) {
   const handleSwitch = (app: AppId) => {
     if (app === activeApp) return;
     localStorage.setItem(STORAGE_KEY, app);
     onSwitch(app);
   };
-  const iconSize = 20;
+  const isVertical = orientation === "vertical";
+  const iconSize = isVertical ? 18 : 20;
   const appIconName: Record<AppId, string> = {
     claude: "claude",
     "claude-desktop": "claude",
@@ -63,14 +66,19 @@ export function AppSwitcher({
     hermes: "Hermes",
   };
 
-  // Filter apps based on visibility settings (default all visible)
   const appsToShow = ALL_APPS.filter((app) => {
     if (!visibleApps) return true;
     return visibleApps[app];
   });
 
   return (
-    <div className="inline-flex bg-muted rounded-xl p-1 gap-1">
+    <div
+      className={cn(
+        isVertical
+          ? "flex w-full flex-col gap-0.5 rounded-xl bg-muted/70 p-1"
+          : "inline-flex gap-1 rounded-xl bg-muted p-1",
+      )}
+    >
       {appsToShow.map((app) => {
         const badgeConfig = APP_BADGE_ICON[app];
         const BadgeIcon = badgeConfig?.icon;
@@ -81,10 +89,13 @@ export function AppSwitcher({
             type="button"
             onClick={() => handleSwitch(app)}
             className={cn(
-              "group inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-200",
+              "group inline-flex items-center rounded-md text-sm font-medium transition-all duration-200",
+              isVertical
+                ? "h-9 w-full gap-2.5 px-2.5"
+                : "h-8 px-3",
               isActive
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+                : "text-muted-foreground hover:bg-background/50 hover:text-foreground",
             )}
           >
             <span className="relative inline-flex shrink-0">
@@ -96,10 +107,10 @@ export function AppSwitcher({
               {BadgeIcon && (
                 <span
                   className={cn(
-                    "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-[3px] border h-[11px] w-[11px]",
+                    "absolute -bottom-0.5 -right-0.5 flex h-[11px] w-[11px] items-center justify-center rounded-[3px] border",
                     isActive
-                      ? "bg-background border-border text-foreground"
-                      : "bg-muted border-background text-muted-foreground group-hover:bg-background group-hover:text-foreground",
+                      ? "border-border bg-background text-foreground"
+                      : "border-background bg-muted text-muted-foreground group-hover:bg-background group-hover:text-foreground",
                   )}
                   aria-hidden="true"
                 >
@@ -117,10 +128,12 @@ export function AppSwitcher({
             </span>
             <span
               className={cn(
-                "transition-all duration-200 whitespace-nowrap overflow-hidden",
-                compact
-                  ? "max-w-0 opacity-0 ml-0"
-                  : "max-w-[120px] opacity-100 ml-2",
+                "overflow-hidden whitespace-nowrap transition-all duration-200",
+                isVertical
+                  ? "ml-0 max-w-none opacity-100"
+                  : compact
+                    ? "ml-0 max-w-0 opacity-0"
+                    : "ml-2 max-w-[120px] opacity-100",
               )}
             >
               {appDisplayName[app]}
