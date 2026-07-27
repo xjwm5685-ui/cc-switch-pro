@@ -50,6 +50,7 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
 import { cn } from "@/lib/utils";
+import { contentEase, fadeSlide, headerTitle, indicatorSpring } from "@/lib/motion";
 import {
   isWindows,
   isLinux,
@@ -970,10 +971,11 @@ function App() {
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeApp}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    variants={fadeSlide}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                     className="space-y-4"
                   >
                     <ProviderList
@@ -1037,10 +1039,11 @@ function App() {
         <motion.div
           key={currentView}
           className="flex-1 min-h-0"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          variants={fadeSlide}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={contentEase}
         >
           {content}
         </motion.div>
@@ -1324,44 +1327,66 @@ function App() {
           footer={
             <div className="flex flex-col gap-0.5">
               {isCurrentAppTakeoverActive && (
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setSettingsDefaultTab("usage");
-                    setCurrentView("settings");
-                  }}
-                  title={t("usage.title", { defaultValue: "使用统计" })}
-                  className={cn(
-                    "h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
-                    currentView === "settings" && settingsDefaultTab === "usage"
-                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
-                      : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                  )}
-                >
-                  <BarChart2 className="h-4 w-4" />
-                  <span className="truncate">
-                    {t("usage.title", { defaultValue: "使用统计" })}
-                  </span>
-                </Button>
+                <div className="relative">
+                  {currentView === "settings" &&
+                    settingsDefaultTab === "usage" && (
+                      <motion.div
+                        layoutId="sidebar-nav-active"
+                        className="absolute inset-0 rounded-lg bg-background shadow-sm ring-1 ring-border/60"
+                        transition={indicatorSpring}
+                      />
+                    )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSettingsDefaultTab("usage");
+                      setCurrentView("settings");
+                    }}
+                    title={t("usage.title", { defaultValue: "使用统计" })}
+                    className={cn(
+                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
+                      currentView === "settings" &&
+                        settingsDefaultTab === "usage"
+                        ? "bg-transparent text-foreground"
+                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                    )}
+                  >
+                    <BarChart2 className="h-4 w-4" />
+                    <span className="truncate">
+                      {t("usage.title", { defaultValue: "使用统计" })}
+                    </span>
+                  </Button>
+                </div>
               )}
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setSettingsDefaultTab("general");
-                    setCurrentView("settings");
-                  }}
-                  title={t("common.settings")}
-                  className={cn(
-                    "h-9 flex-1 justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
-                    currentView === "settings" && settingsDefaultTab !== "usage"
-                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
-                      : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                  )}
-                >
-                  <Settings className="h-4 w-4" />
-                  <span className="truncate">{t("common.settings")}</span>
-                </Button>
+                <div className="relative flex-1">
+                  {currentView === "settings" &&
+                    settingsDefaultTab !== "usage" && (
+                      <motion.div
+                        layoutId="sidebar-nav-active"
+                        className="absolute inset-0 rounded-lg bg-background shadow-sm ring-1 ring-border/60"
+                        transition={indicatorSpring}
+                      />
+                    )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSettingsDefaultTab("general");
+                      setCurrentView("settings");
+                    }}
+                    title={t("common.settings")}
+                    className={cn(
+                      "relative z-10 h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sm font-medium",
+                      currentView === "settings" &&
+                        settingsDefaultTab !== "usage"
+                        ? "bg-transparent text-foreground"
+                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                    )}
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="truncate">{t("common.settings")}</span>
+                  </Button>
+                </div>
                 <UpdateBadge
                   onClick={() => {
                     setSettingsDefaultTab("about");
@@ -1393,20 +1418,31 @@ function App() {
                 className="min-w-0"
                 style={{ WebkitAppRegion: "no-drag" } as any}
               >
-                <h1 className="truncate text-base font-semibold tracking-tight">
-                  {viewTitle}
-                </h1>
-                {currentView === "providers" &&
-                  currentProviderId &&
-                  providers[currentProviderId]?.name &&
-                  activeApp !== "opencode" && (
-                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      {t("provider.headerCurrent", {
-                        name: providers[currentProviderId].name,
-                        defaultValue: "当前：{{name}}",
-                      })}
-                    </p>
-                  )}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentView}
+                    variants={headerTitle}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <h1 className="truncate text-base font-semibold tracking-tight">
+                      {viewTitle}
+                    </h1>
+                    {currentView === "providers" &&
+                      currentProviderId &&
+                      providers[currentProviderId]?.name &&
+                      activeApp !== "opencode" && (
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {t("provider.headerCurrent", {
+                            name: providers[currentProviderId].name,
+                            defaultValue: "当前：{{name}}",
+                          })}
+                        </p>
+                      )}
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
               <div

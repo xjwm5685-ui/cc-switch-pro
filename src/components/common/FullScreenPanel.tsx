@@ -11,6 +11,7 @@ import {
 } from "@/lib/platform";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { cn } from "@/lib/utils";
+import { contentEase, panelSlide } from "@/lib/motion";
 
 interface FullScreenPanelProps {
   isOpen: boolean;
@@ -87,10 +88,11 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          variants={panelSlide}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={contentEase}
           className="fixed inset-0 z-[60] flex flex-col"
           style={{ backgroundColor: "hsl(var(--background))" }}
         >

@@ -1,7 +1,9 @@
+import { motion } from "framer-motion";
 import type { AppId } from "@/lib/api";
 import type { VisibleApps } from "@/types";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { cn } from "@/lib/utils";
+import { indicatorSpring } from "@/lib/motion";
 import { Monitor, Terminal } from "lucide-react";
 
 const APP_BADGE_ICON: Partial<
@@ -89,14 +91,21 @@ export function AppSwitcher({
             type="button"
             onClick={() => handleSwitch(app)}
             className={cn(
-              "group inline-flex items-center rounded-md text-sm font-medium transition-all duration-200",
+              "group relative inline-flex items-center rounded-md text-sm font-medium transition-colors duration-200",
               isVertical ? "h-9 w-full gap-2.5 px-2.5" : "h-8 px-3",
               isActive
-                ? "bg-background text-foreground shadow-sm"
+                ? "text-foreground"
                 : "text-muted-foreground hover:bg-background/50 hover:text-foreground",
             )}
           >
-            <span className="relative inline-flex shrink-0">
+            {isActive && (
+              <motion.span
+                layoutId="app-switcher-active"
+                className="absolute inset-0 rounded-md bg-background shadow-sm"
+                transition={indicatorSpring}
+              />
+            )}
+            <span className="relative z-10 inline-flex shrink-0">
               <ProviderIcon
                 icon={appIconName[app]}
                 name={appDisplayName[app]}
@@ -126,7 +135,7 @@ export function AppSwitcher({
             </span>
             <span
               className={cn(
-                "overflow-hidden whitespace-nowrap transition-all duration-200",
+                "relative z-10 overflow-hidden whitespace-nowrap transition-all duration-200",
                 isVertical
                   ? "ml-0 max-w-none opacity-100"
                   : compact
