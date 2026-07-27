@@ -1,4 +1,8 @@
 #![allow(non_snake_case)]
+// Windows intentionally skips tool version probing in `get_tool_versions` (to avoid
+// launching CLIs via protocol handlers). That leaves the probe helpers unused on
+// Windows release/check builds; keep them for other platforms and unit tests.
+#![cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
 
 use crate::app_config::AppType;
 use crate::init_status::{InitErrorPayload, SkillsMigrationPayload};
