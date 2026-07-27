@@ -24,6 +24,7 @@ use std::time::Instant;
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy::error::ProxyError;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
 
 /// 健康状态枚举
@@ -183,11 +184,96 @@ impl StreamCheckService {
             AppType::Hermes => Self::extract_hermes_base_url(provider),
             AppType::ClaudeDesktop => ClaudeAdapter::new()
                 .extract_base_url(provider)
+                .or_else(|_| {
+                    Self::extract_common_base_url(provider)
+                        .ok_or_else(|| ProxyError::ConfigError("missing base_url".into()))
+                })
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
             _ => get_adapter(app_type)
                 .extract_base_url(provider)
+                .or_else(|_| {
+                    Self::extract_common_base_url(provider)
+                        .ok_or_else(|| ProxyError::ConfigError("missing base_url".into()))
+                })
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
         }
+    }
+
+    /// Last-resort URL discovery shared across Claude/Codex/Gemini shapes.
+    /// Used only when the app-specific adapter cannot find a base URL.
+    fn extract_common_base_url(provider: &Provider) -> Option<String> {
+        let normalize = |url: &str| -> Option<String> {
+            let trimmed = url.trim().trim_end_matches('/').to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        };
+
+        for key in ["base_url", "baseURL", "baseUrl", "apiEndpoint", "api_endpoint"] {
+            if let Some(url) = provider
+                .settings_config
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(normalize)
+            {
+                return Some(url);
+            }
+        }
+
+        if let Some(env) = provider.settings_config.get("env") {
+            for key in [
+                "ANTHROPIC_BASE_URL",
+                "OPENAI_BASE_URL",
+                "GOOGLE_GEMINI_BASE_URL",
+            ] {
+                if let Some(url) = env.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Some(url);
+                }
+            }
+        }
+
+        if let Some(options) = provider.settings_config.get("options") {
+            for key in ["baseURL", "baseUrl", "base_url"] {
+                if let Some(url) = options.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Some(url);
+                }
+            }
+        }
+
+        if let Some(config) = provider.settings_config.get("config") {
+            if let Some(config_str) = config.as_str() {
+                if let Some(url) = crate::codex_config::extract_codex_base_url_for_reachability(
+                    config_str,
+                )
+                .and_then(|u| normalize(&u))
+                {
+                    return Some(url);
+                }
+            }
+        }
+
+        // Prefer a configured custom endpoint over failing the whole check.
+        if let Some(meta) = provider.meta.as_ref() {
+            for url in meta.custom_endpoints.keys() {
+                if let Some(normalized) = normalize(url) {
+                    return Some(normalized);
+                }
+            }
+        }
+
+        // websiteUrl as last resort when it looks like an HTTP(S) origin
+        if let Some(url) = provider.website_url.as_deref() {
+            let lower = url.trim().to_ascii_lowercase();
+            if lower.starts_with("http://") || lower.starts_with("https://") {
+                if let Some(normalized) = normalize(url) {
+                    return Some(normalized);
+                }
+            }
+        }
+
+        None
     }
 
     /// 轻量可达性探测：GET `base_url`，收到任意 HTTP 响应即可达。
@@ -521,5 +607,38 @@ mod tests {
         official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_string();
         official.category = Some("official".to_string());
         assert!(StreamCheckService::resolve_base_url(&AppType::Codex, &official).is_err());
+    }
+
+    #[test]
+    fn test_resolve_base_url_codex_model_providers_toml() {
+        let p = make_provider(serde_json::json!({
+            "auth": { "OPENAI_API_KEY": "sk-test" },
+            "config": "model_provider = \"custom\"\n\n[model_providers.custom]\nbase_url = \"https://www.packyapi.com/v1\"\nwire_api = \"responses\"\n"
+        }));
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::Codex, &p).unwrap(),
+            "https://www.packyapi.com/v1"
+        );
+
+        // No model_provider key, but exactly one provider section — still usable for reachability.
+        let sole = make_provider(serde_json::json!({
+            "config": "[model_providers.custom]\nbase_url = \"https://relay.example.com/v1\"\n"
+        }));
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::Codex, &sole).unwrap(),
+            "https://relay.example.com/v1"
+        );
+    }
+
+    #[test]
+    fn test_resolve_base_url_claude_empty_env_falls_back_to_website() {
+        let mut p = make_provider(serde_json::json!({
+            "env": { "ANTHROPIC_BASE_URL": "", "ANTHROPIC_AUTH_TOKEN": "sk" }
+        }));
+        p.website_url = Some("https://api.jun.example/v1".to_string());
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::Claude, &p).unwrap(),
+            "https://api.jun.example/v1"
+        );
     }
 }

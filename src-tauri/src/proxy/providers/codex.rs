@@ -579,9 +579,7 @@ fn extract_codex_model_from_toml(config_text: &str) -> Option<String> {
 }
 
 fn extract_codex_base_url_from_toml(config_text: &str) -> Option<String> {
-    // Canonical parser lives in codex_config; keep this thin alias so the
-    // proxy hot path and the usage-credential resolver share one implementation.
-    crate::codex_config::extract_codex_base_url(config_text)
+    crate::codex_config::extract_codex_base_url_for_reachability(config_text)
 }
 
 impl CodexAdapter {
@@ -680,45 +678,73 @@ impl ProviderAdapter for CodexAdapter {
             return Ok(super::XAI_API_BASE_URL.to_string());
         }
 
-        // 1. 尝试直接获取 base_url 字段
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+        let normalize = |url: &str| -> Option<String> {
+            let trimmed = url.trim().trim_end_matches('/').to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        };
+
+        // 1. Flat fields on settings_config
+        for key in ["base_url", "baseURL", "baseUrl"] {
+            if let Some(url) = provider
+                .settings_config
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(normalize)
+            {
+                return Ok(url);
+            }
         }
 
-        // 2. 尝试 baseURL
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+        // 2. Env-style URLs (Claude-compatible / OpenAI-compatible gateways under Codex)
+        if let Some(env) = provider.settings_config.get("env") {
+            for key in [
+                "OPENAI_BASE_URL",
+                "ANTHROPIC_BASE_URL",
+                "GOOGLE_GEMINI_BASE_URL",
+            ] {
+                if let Some(url) = env.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Ok(url);
+                }
+            }
         }
 
-        // 3. 尝试从 config 对象中获取
+        // 3. Nested `config` object or Codex/Grok TOML string
         if let Some(config) = provider.settings_config.get("config") {
-            if let Some(url) = config.get("base_url").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
+            for key in ["base_url", "baseURL", "baseUrl"] {
+                if let Some(url) = config.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Ok(url);
+                }
             }
 
-            // 尝试解析 TOML 字符串格式
             if let Some(config_str) = config.as_str() {
-                if let Some(url) = crate::grok_config::extract_base_url(config_str) {
-                    return Ok(url.trim_end_matches('/').to_string());
+                // Prefer the canonical Codex parser (`model_provider` +
+                // `[model_providers.<id>].base_url`). The old string-scan path
+                // missed many real configs and made connectivity checks fail
+                // for every provider that only stores the URL in that section.
+                if let Some(url) =
+                    extract_codex_base_url_from_toml(config_str).and_then(|u| normalize(&u))
+                {
+                    return Ok(url);
                 }
-                if let Some(start) = config_str.find("base_url = \"") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('"') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
-                    }
+                if let Some(url) =
+                    crate::grok_config::extract_base_url(config_str).and_then(|u| normalize(&u))
+                {
+                    return Ok(url);
                 }
-                if let Some(start) = config_str.find("base_url = '") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('\'') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
+                // Last-resort scan for oddly spaced assignments
+                for pattern in ["base_url = \"", "base_url=\"", "base_url = '", "base_url='"] {
+                    if let Some(start) = config_str.find(pattern) {
+                        let rest = &config_str[start + pattern.len()..];
+                        let end_ch = if pattern.ends_with('\'') { '\'' } else { '"' };
+                        if let Some(end) = rest.find(end_ch) {
+                            if let Some(url) = normalize(&rest[..end]) {
+                                return Ok(url);
+                            }
+                        }
                     }
                 }
             }
@@ -997,6 +1023,38 @@ wire_api = "responses"
 
         let url = adapter.extract_base_url(&provider).unwrap();
         assert_eq!(url, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn test_extract_base_url_from_model_providers_toml() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({
+            "auth": { "OPENAI_API_KEY": "sk-test" },
+            "config": r#"model_provider = "packycode"
+
+[model_providers.packycode]
+name = "PackyCode"
+base_url = "https://www.packyapi.com/v1"
+wire_api = "responses"
+"#
+        }));
+
+        let url = adapter.extract_base_url(&provider).unwrap();
+        assert_eq!(url, "https://www.packyapi.com/v1");
+    }
+
+    #[test]
+    fn test_extract_base_url_from_single_provider_section_without_active() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({
+            "config": r#"
+[model_providers.custom]
+base_url = "https://relay.example.com/v1"
+"#
+        }));
+
+        let url = adapter.extract_base_url(&provider).unwrap();
+        assert_eq!(url, "https://relay.example.com/v1");
     }
 
     #[test]

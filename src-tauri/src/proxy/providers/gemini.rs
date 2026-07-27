@@ -163,32 +163,59 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        // 从 env 中获取
+        let normalize = |url: &str| -> Option<String> {
+            let trimmed = url.trim().trim_end_matches('/').to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        };
+
+        // 从 env 中获取（跳过空占位）
         if let Some(env) = provider.settings_config.get("env") {
-            if let Some(url) = env.get("GOOGLE_GEMINI_BASE_URL").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
+            for key in ["GOOGLE_GEMINI_BASE_URL", "ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"] {
+                if let Some(url) = env.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Ok(url);
+                }
             }
         }
 
         // 尝试直接获取
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+        for key in ["base_url", "baseURL", "baseUrl", "apiEndpoint"] {
+            if let Some(url) = provider
+                .settings_config
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(normalize)
+            {
+                return Ok(url);
+            }
+        }
+
+        if let Some(meta) = provider.meta.as_ref() {
+            for url in meta.custom_endpoints.keys() {
+                if let Some(normalized) = normalize(url) {
+                    return Ok(normalized);
+                }
+            }
         }
 
         if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
+            .website_url
+            .as_deref()
+            .filter(|u| {
+                let lower = u.trim().to_ascii_lowercase();
+                lower.starts_with("http://") || lower.starts_with("https://")
+            })
+            .and_then(normalize)
         {
-            return Ok(url.trim_end_matches('/').to_string());
+            return Ok(url);
         }
 
         Err(ProxyError::ConfigError(
-            "Gemini Provider 缺少 base_url 配置".to_string(),
+            "Gemini Provider 缺少 base_url 配置（请填写 GOOGLE_GEMINI_BASE_URL 或 API 端点）"
+                .to_string(),
         ))
     }
 

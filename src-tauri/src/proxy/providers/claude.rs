@@ -712,40 +712,74 @@ impl ProviderAdapter for ClaudeAdapter {
             return Ok(super::XAI_API_BASE_URL.to_string());
         }
 
-        // 1. 从 env 中获取
+        let normalize = |url: &str| -> Option<String> {
+            let trimmed = url.trim().trim_end_matches('/').to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        };
+
+        // 1. Anthropic-style env (skip empty placeholders — presets often seed "")
         if let Some(env) = provider.settings_config.get("env") {
-            if let Some(url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
+            for key in [
+                "ANTHROPIC_BASE_URL",
+                "OPENAI_BASE_URL",
+                "GOOGLE_GEMINI_BASE_URL",
+            ] {
+                if let Some(url) = env.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Ok(url);
+                }
             }
         }
 
-        // 2. 尝试直接获取
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+        // 2. Flat fields on settings_config
+        for key in ["base_url", "baseURL", "baseUrl", "apiEndpoint", "api_endpoint"] {
+            if let Some(url) = provider
+                .settings_config
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(normalize)
+            {
+                return Ok(url);
+            }
         }
 
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
+        // 3. Nested options (OpenCode-shaped configs reused under Claude)
+        if let Some(options) = provider.settings_config.get("options") {
+            for key in ["baseURL", "baseUrl", "base_url"] {
+                if let Some(url) = options.get(key).and_then(|v| v.as_str()).and_then(normalize) {
+                    return Ok(url);
+                }
+            }
         }
 
+        // 4. Custom endpoints saved via endpoint manager / speed-test
+        if let Some(meta) = provider.meta.as_ref() {
+            for url in meta.custom_endpoints.keys() {
+                if let Some(normalized) = normalize(url) {
+                    return Ok(normalized);
+                }
+            }
+        }
+
+        // 5. websiteUrl when it looks like an API origin (common for hand-built providers)
         if let Some(url) = provider
-            .settings_config
-            .get("apiEndpoint")
-            .and_then(|v| v.as_str())
+            .website_url
+            .as_deref()
+            .filter(|u| {
+                let lower = u.trim().to_ascii_lowercase();
+                lower.starts_with("http://") || lower.starts_with("https://")
+            })
+            .and_then(normalize)
         {
-            return Ok(url.trim_end_matches('/').to_string());
+            return Ok(url);
         }
 
         Err(ProxyError::ConfigError(
-            "Claude Provider 缺少 base_url 配置".to_string(),
+            "Claude Provider 缺少 base_url 配置（请填写 ANTHROPIC_BASE_URL 或 API 端点）"
+                .to_string(),
         ))
     }
 
@@ -1071,6 +1105,42 @@ mod tests {
 
         let url = adapter.extract_base_url(&provider).unwrap();
         assert_eq!(url, "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_extract_base_url_skips_empty_env_and_uses_website() {
+        let adapter = ClaudeAdapter::new();
+        let mut provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "",
+                "ANTHROPIC_AUTH_TOKEN": "sk-test"
+            }
+        }));
+        provider.website_url = Some("https://gw.example.com/anthropic".to_string());
+
+        let url = adapter.extract_base_url(&provider).unwrap();
+        assert_eq!(url, "https://gw.example.com/anthropic");
+    }
+
+    #[test]
+    fn test_extract_base_url_from_custom_endpoints() {
+        let adapter = ClaudeAdapter::new();
+        let mut meta = ProviderMeta::default();
+        meta.custom_endpoints.insert(
+            "https://api.packyapi.ai".to_string(),
+            crate::settings::CustomEndpoint {
+                url: "https://api.packyapi.ai".to_string(),
+                added_at: 0,
+                last_used: None,
+            },
+        );
+        let provider = create_provider_with_meta(
+            json!({ "env": { "ANTHROPIC_BASE_URL": "" } }),
+            meta,
+        );
+
+        let url = adapter.extract_base_url(&provider).unwrap();
+        assert_eq!(url, "https://api.packyapi.ai");
     }
 
     #[test]

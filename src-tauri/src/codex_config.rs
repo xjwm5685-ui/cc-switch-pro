@@ -370,6 +370,48 @@ pub fn extract_codex_base_url(config_text: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// Looser base_url discovery for reachability / display when the strict
+/// live-config parser finds nothing.
+///
+/// Unlike [`extract_codex_base_url`], when `model_provider` is **absent** and
+/// exactly one `[model_providers.*].base_url` exists, that URL is used
+/// (mirrors frontend recoverable-assignment behavior). If `model_provider` is
+/// set but unresolved, this still returns `None` so leftover sections cannot
+/// leak into live-config credential paths.
+pub fn extract_codex_base_url_for_reachability(config_text: &str) -> Option<String> {
+    if let Some(url) = extract_codex_base_url(config_text) {
+        return Some(url);
+    }
+
+    let doc = config_text.parse::<toml::Value>().ok()?;
+    if doc
+        .get("model_provider")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some()
+    {
+        return None;
+    }
+
+    let providers = doc.get("model_providers")?.as_table()?;
+    let mut found: Option<String> = None;
+    for (_name, provider) in providers.iter() {
+        let Some(url) = provider.get("base_url").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if found.is_some() {
+            return None;
+        }
+        found = Some(trimmed.to_string());
+    }
+    found
+}
+
 pub fn codex_auth_has_login_material(auth: &Value) -> bool {
     let Some(obj) = auth.as_object() else {
         return false;

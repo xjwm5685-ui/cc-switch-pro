@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback, type FocusEvent } from "react";
 import { GripVertical, ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -268,6 +268,31 @@ export function ProviderCard({
     usage?.success && usage.data && usage.data.length > 1 && !isTokenPlan;
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [actionsHot, setActionsHot] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(hover: none), (pointer: coarse)");
+    const sync = () => setCoarsePointer(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const actionsExpanded = coarsePointer || actionsHot;
+
+  const handleCardPointerEnter = useCallback(() => setActionsHot(true), []);
+  const handleCardPointerLeave = useCallback(() => setActionsHot(false), []);
+  const handleCardFocusCapture = useCallback(() => setActionsHot(true), []);
+  const handleCardBlurCapture = useCallback(
+    (event: FocusEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        setActionsHot(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (hasMultiplePlans) {
@@ -326,6 +351,10 @@ export function ProviderCard({
       )}
       data-provider-id={provider.id}
       aria-selected={isKeyboardActive || undefined}
+      onMouseEnter={handleCardPointerEnter}
+      onMouseLeave={handleCardPointerLeave}
+      onFocusCapture={handleCardFocusCapture}
+      onBlurCapture={handleCardBlurCapture}
     >
       <div
         className={cn(
@@ -638,13 +667,7 @@ export function ProviderCard({
               // OpenClaw: default model
               isDefaultModel={isDefaultModel}
               onSetAsDefault={onSetAsDefault}
-              secondaryClassName={cn(
-                "opacity-0 pointer-events-none transition-opacity duration-200",
-                "group-hover:opacity-100 group-hover:pointer-events-auto",
-                "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
-                "max-sm:opacity-100 max-sm:pointer-events-auto",
-                "[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto",
-              )}
+              actionsExpanded={actionsExpanded}
             />
           </div>
         </div>

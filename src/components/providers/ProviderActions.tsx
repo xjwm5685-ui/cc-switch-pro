@@ -12,6 +12,7 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -42,8 +43,11 @@ interface ProviderActionsProps {
   // OpenClaw: default model
   isDefaultModel?: boolean;
   onSetAsDefault?: () => void;
-  /** Applied to secondary icon actions (edit/copy/…) for hover-reveal etc. */
-  secondaryClassName?: string;
+  /**
+   * When true, secondary icon tray expands to the left of the main CTA,
+   * smoothly shifting「启用」left with a spring curve.
+   */
+  actionsExpanded?: boolean;
 }
 
 // 主按钮的呈现状态。title 用于 disabled 态向用户解释为何不可点击；
@@ -57,6 +61,21 @@ interface MainButtonState {
   text: string;
   title?: string;
 }
+
+/** Soft spring — snappy open, gentle settle (feels “curvy”, not linear). */
+const traySpring = {
+  type: "spring" as const,
+  stiffness: 420,
+  damping: 30,
+  mass: 0.75,
+};
+
+const iconSpring = {
+  type: "spring" as const,
+  stiffness: 520,
+  damping: 28,
+  mass: 0.55,
+};
 
 export function ProviderActions({
   appId,
@@ -82,7 +101,7 @@ export function ProviderActions({
   // OpenClaw: default model
   isDefaultModel = false,
   onSetAsDefault,
-  secondaryClassName,
+  actionsExpanded = false,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
   const iconButtonClass = "h-8 w-8 p-1";
@@ -229,61 +248,10 @@ export function ProviderActions({
     defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
   });
 
-  return (
-    <div className="flex items-center gap-1.5">
-      {(appId === "openclaw" || appId === "hermes") &&
-        isInConfig &&
-        onSetAsDefault &&
-        (() => {
-          const activeLabel =
-            appId === "hermes"
-              ? t("provider.inUse", { defaultValue: "已在用" })
-              : t("provider.isDefault", { defaultValue: "当前默认" });
-          const inactiveLabel =
-            appId === "hermes"
-              ? t("provider.enable", { defaultValue: "启用" })
-              : t("provider.setAsDefault", { defaultValue: "设为默认" });
-          return (
-            <Button
-              size="sm"
-              variant={isDefaultModel ? "secondary" : "default"}
-              onClick={isDefaultModel ? undefined : onSetAsDefault}
-              disabled={isDefaultModel}
-              className={cn(
-                "w-fit px-2.5",
-                isDefaultModel
-                  ? "bg-gray-200 text-muted-foreground dark:bg-gray-700 opacity-60 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
-              )}
-            >
-              <Zap className="h-4 w-4" />
-              {isDefaultModel ? activeLabel : inactiveLabel}
-            </Button>
-          );
-        })()}
-
-      {/* wrapper span 承接 hover：disabled 按钮自身 pointer-events:none，
-          原生 title 与 cursor 都必须挂在未禁用的外层元素上才会生效 */}
-      <span
-        title={buttonState.title}
-        className={cn(
-          "inline-flex",
-          buttonState.disabled && "cursor-not-allowed",
-        )}
-      >
-        <Button
-          size="sm"
-          variant={buttonState.variant}
-          onClick={handleMainButtonClick}
-          disabled={buttonState.disabled}
-          className={cn("w-[4.5rem] px-2.5", buttonState.className)}
-        >
-          {buttonState.icon}
-          {buttonState.text}
-        </Button>
-      </span>
-
-      <div className={cn("flex items-center gap-1", secondaryClassName)}>
+  const secondaryIcons = [
+    {
+      key: "edit",
+      node: (
         <Button
           size="icon"
           variant="ghost"
@@ -297,7 +265,11 @@ export function ProviderActions({
         >
           <Edit className="h-4 w-4" />
         </Button>
-
+      ),
+    },
+    {
+      key: "duplicate",
+      node: (
         <Button
           size="icon"
           variant="ghost"
@@ -307,7 +279,11 @@ export function ProviderActions({
         >
           <Copy className="h-4 w-4" />
         </Button>
-
+      ),
+    },
+    {
+      key: "test",
+      node: (
         <Button
           size="icon"
           variant="ghost"
@@ -325,7 +301,11 @@ export function ProviderActions({
             <Activity className="h-4 w-4" />
           )}
         </Button>
-
+      ),
+    },
+    {
+      key: "usage",
+      node: (
         <Button
           size="icon"
           variant="ghost"
@@ -339,22 +319,32 @@ export function ProviderActions({
         >
           <BarChart3 className="h-4 w-4" />
         </Button>
-
-        {onOpenTerminal && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onOpenTerminal}
-            title={t("provider.openTerminal", "打开终端")}
-            className={cn(
-              iconButtonClass,
-              "hover:text-emerald-600 dark:hover:text-emerald-400",
-            )}
-          >
-            <Terminal className="h-4 w-4" />
-          </Button>
-        )}
-
+      ),
+    },
+    ...(onOpenTerminal
+      ? [
+          {
+            key: "terminal",
+            node: (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onOpenTerminal}
+                title={t("provider.openTerminal", "打开终端")}
+                className={cn(
+                  iconButtonClass,
+                  "hover:text-emerald-600 dark:hover:text-emerald-400",
+                )}
+              >
+                <Terminal className="h-4 w-4" />
+              </Button>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "delete",
+      node: (
         <Button
           size="icon"
           variant="ghost"
@@ -363,12 +353,119 @@ export function ProviderActions({
           className={cn(
             iconButtonClass,
             canDelete && "hover:text-red-500 dark:hover:text-red-400",
-            !canDelete && "opacity-40 cursor-not-allowed text-muted-foreground",
+            !canDelete &&
+              "opacity-40 cursor-not-allowed text-muted-foreground",
           )}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
-      </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {/* Secondary tray: collapsed = zero width so「启用」stays flush right */}
+      <motion.div
+        initial={false}
+        animate={actionsExpanded ? "open" : "closed"}
+        variants={{
+          open: {
+            maxWidth: 240,
+            opacity: 1,
+            x: 0,
+            marginRight: 4,
+            transition: traySpring,
+          },
+          closed: {
+            maxWidth: 0,
+            opacity: 0,
+            x: 10,
+            marginRight: 0,
+            transition: {
+              ...traySpring,
+              opacity: { duration: 0.18, ease: [0.4, 0, 0.2, 1] },
+            },
+          },
+        }}
+        className="overflow-hidden"
+        style={{ pointerEvents: actionsExpanded ? "auto" : "none" }}
+      >
+        <div className="flex items-center gap-0.5 whitespace-nowrap pe-0.5">
+          {secondaryIcons.map((item, index) => (
+            <motion.div
+              key={item.key}
+              initial={false}
+              animate={
+                actionsExpanded
+                  ? { opacity: 1, x: 0, scale: 1 }
+                  : { opacity: 0, x: 14, scale: 0.88 }
+              }
+              transition={{
+                ...iconSpring,
+                delay: actionsExpanded ? index * 0.028 : 0,
+              }}
+            >
+              {item.node}
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+
+      {(appId === "openclaw" || appId === "hermes") &&
+        isInConfig &&
+        onSetAsDefault &&
+        (() => {
+          const activeLabel =
+            appId === "hermes"
+              ? t("provider.inUse", { defaultValue: "已在用" })
+              : t("provider.isDefault", { defaultValue: "当前默认" });
+          const inactiveLabel =
+            appId === "hermes"
+              ? t("provider.enable", { defaultValue: "启用" })
+              : t("provider.setAsDefault", { defaultValue: "设为默认" });
+          return (
+            <motion.div layout transition={traySpring}>
+              <Button
+                size="sm"
+                variant={isDefaultModel ? "secondary" : "default"}
+                onClick={isDefaultModel ? undefined : onSetAsDefault}
+                disabled={isDefaultModel}
+                className={cn(
+                  "w-fit px-2.5",
+                  isDefaultModel
+                    ? "bg-gray-200 text-muted-foreground dark:bg-gray-700 opacity-60 cursor-not-allowed"
+                    : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
+                )}
+              >
+                <Zap className="h-4 w-4" />
+                {isDefaultModel ? activeLabel : inactiveLabel}
+              </Button>
+            </motion.div>
+          );
+        })()}
+
+      {/* Main CTA stays on the far right; layout anim slides it left when tray opens */}
+      <motion.span
+        layout
+        transition={traySpring}
+        title={buttonState.title}
+        className={cn(
+          "inline-flex shrink-0",
+          buttonState.disabled && "cursor-not-allowed",
+        )}
+      >
+        <Button
+          size="sm"
+          variant={buttonState.variant}
+          onClick={handleMainButtonClick}
+          disabled={buttonState.disabled}
+          className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+        >
+          {buttonState.icon}
+          {buttonState.text}
+        </Button>
+      </motion.span>
     </div>
   );
 }
