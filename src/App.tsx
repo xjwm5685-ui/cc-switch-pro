@@ -57,10 +57,7 @@ import {
   DRAG_REGION_STYLE,
 } from "@/lib/platform";
 import { AppSwitcher } from "@/components/AppSwitcher";
-import {
-  AppSidebar,
-  type SidebarNavItem,
-} from "@/components/AppSidebar";
+import { AppSidebar, type SidebarNavItem } from "@/components/AppSidebar";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { ProviderList } from "@/components/providers/ProviderList";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";

@@ -90,9 +90,7 @@ export function AppSwitcher({
             onClick={() => handleSwitch(app)}
             className={cn(
               "group inline-flex items-center rounded-md text-sm font-medium transition-all duration-200",
-              isVertical
-                ? "h-9 w-full gap-2.5 px-2.5"
-                : "h-8 px-3",
+              isVertical ? "h-9 w-full gap-2.5 px-2.5" : "h-8 px-3",
               isActive
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:bg-background/50 hover:text-foreground",
